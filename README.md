@@ -4,7 +4,7 @@
   <img src="assets/mazes_large_maze_abcd.gif" alt="animated" width=800/>
 </p>
 
-This repository contains the code for the experiments and figures used in:  [Schema-based active inference supports rapid generalization of experience and frontal cortical coding of abstract structure]() by Toon Van de Maele, Tim Verbelen, Dileep George and Giovanni Pezzulo.
+This repository contains the code for the experiments and figures used in:  [Schema-based active inference supports rapid generalization of experience and frontal cortical coding of abstract structure](https://arxiv.org/abs/2601.18946) by Toon Van de Maele, Tim Verbelen, Dileep George and Giovanni Pezzulo.
 
 ## Installation
 
@@ -51,3 +51,15 @@ The code for training the clone structured cognitive graphs comes from [CSCG](ht
 ## Citation
 
 If you find the code useful, please refer to our work using:
+
+```
+@misc{vandemaele2026schemabasedactiveinference,
+      title={Schema-based active inference supports rapid generalization of experience and frontal cortical coding of abstract structure}, 
+      author={Toon Van de Maele and Tim Verbelen and Dileep George and Giovanni Pezzulo},
+      year={2026},
+      eprint={2601.18946},
+      archivePrefix={arXiv},
+      primaryClass={q-bio.NC},
+      url={https://arxiv.org/abs/2601.18946}, 
+}
+```
