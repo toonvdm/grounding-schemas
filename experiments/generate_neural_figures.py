@@ -201,6 +201,7 @@ def create_polar_plot(
 
     for n, (investigate_loc, phase) in enumerate(neurons):
         investigate_loc = np.array(investigate_loc)  # [::-1]
+        print("\nFiring for ", investigate_loc)
         for i, ax in enumerate(axes[:-1]):
             # Get the data
             p, v, l = prefs[i][-1000:], vals[i][-1000:], locs[i][-1000:]
@@ -209,6 +210,8 @@ def create_polar_plot(
             abcd = maps[i]
             task_state = (np.array([abcd.tolist().index(pi) for pi in p]) - 1) % 4
 
+            print("V:", v)
+
             if phase == "early":
                 bi = np.where(v < 0.33)[0]
             elif phase == "mid":
@@ -216,7 +219,6 @@ def create_polar_plot(
             else:
                 bi = np.where(v > 0.66)[0]
 
-            # print(v[bi])
 
             ax.set_title(f"Block {i + 1}", fontsize=8)
 
