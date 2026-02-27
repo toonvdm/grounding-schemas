@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from matplotlib.colors import hsv_to_rgb
 import matplotlib.patheffects as pe
+import matplotlib.path as mpath
 
 import jax
 import jax.numpy as jnp
@@ -33,6 +34,7 @@ from pymdp import control
 
 import abcd
 from abcd import maze
+from scipy.stats import norm
 
 from run_maze_experiment import get_shai_agent
 
@@ -161,6 +163,272 @@ def create_activations_plot(
     if show:
         plt.show()
     plt.close()
+
+
+def create_polar_plot(
+    filename, low_H, low_state, locations, maps, title="Location-Progress Tuned"
+):
+    def get_semicircle(side="left"):
+        t = np.linspace(-np.pi / 2, np.pi / 2, 20)
+        if side == "left":
+            x = -np.cos(t)
+        else:
+            x = np.cos(t)
+        y = np.sin(t)
+        return mpath.Path(np.column_stack([x, y]))
+
+    prefs, vals, locs = get_progress_values(
+        low_H, low_state, locations, large_maze=True
+    )
+    vals = [v - v.min() for v in vals]
+    vals = [v / v.max() for v in vals]
+
+    x = np.linspace(-4.0, 4.0, 50)
+    y = norm.pdf(x)
+    y = y / y.max()
+
+    loc1 = [7, 7]
+    loc2 = [5, 3]
+    neurons = [(loc1, "mid"), (loc1, "late"), (loc2, "mid")]  # , (loc1, "mid")]
+
+    # axes = [fig.add_subplot(1, 5, i + 1, projection="polar") for i in range(4)]
+    # axes.append(fig.add_subplot(1, 5, 5))
+
+    fig, axes = plt.subplots(1, 5, figsize=(4, 1.4), dpi=300)
+    gs = fig.add_gridspec(1, 5, width_ratios=[1, 1, 1, 1, 1.4])
+    axes = [fig.add_subplot(gs[0, i], projection="polar") for i in range(4)]
+    axes.append(fig.add_subplot(gs[0, 4]))
+
+    for n, (investigate_loc, phase) in enumerate(neurons):
+        investigate_loc = np.array(investigate_loc)  # [::-1]
+        for i, ax in enumerate(axes[:-1]):
+            # Get the data
+            p, v, l = prefs[i][-1000:], vals[i][-1000:], locs[i][-1000:]
+            idcs = np.where(np.linalg.norm(l - investigate_loc[None], axis=-1) == 0)[0]
+            p, v, l = p[idcs], v[idcs], l[idcs]
+            abcd = maps[i]
+            task_state = (np.array([abcd.tolist().index(pi) for pi in p]) - 1) % 4
+
+            if phase == "early":
+                bi = np.where(v < 0.33)[0]
+            elif phase == "mid":
+                bi = np.where((v > 0.33) * (v < 0.66))[0]
+            else:
+                bi = np.where(v > 0.66)[0]
+
+            # print(v[bi])
+
+            ax.set_title(f"Block {i + 1}", fontsize=8)
+
+            angle = task_state * (np.pi / 2) + (v) * np.pi / 2
+
+            angles = np.linspace(0, 2 * np.pi, 500)
+            values = np.zeros(500)
+
+            for abi, avi in zip(angle[bi], v[bi]):
+                idx = ((angles - abi[None]) ** 2).argmin()
+                angles[idx] = abi
+
+                repl_idcs = np.arange(idx - 25, idx + 25) % len(values)
+                values[repl_idcs] = y
+
+            ax.plot(
+                angles,
+                values,
+                marker="",
+                linestyle="-",
+                label=f"Neuron {n + 1}",
+                linewidth=1,
+            )
+
+            ax.set_theta_offset(np.pi / 2)
+            ax.set_theta_direction(-1)
+            ax.set_rmax(1.0)
+            ax.set_rticks([0, 0.25, 0.5, 0.75, 1.0], ["", "", "", "", ""])
+            ax.set_xticks(np.arange(4) * np.pi / 2, ["A", "B", "C", "D"], fontsize=6)
+            ax.tick_params(axis="x", pad=-5)
+
+            for ax in fig.get_axes():
+                # If it's not polar and not your 5th subplot, it's a ghost.
+                if ax.name != "polar" and ax is not axes[-1]:
+                    ax.remove()
+
+    fig.legend(
+        *axes[0].get_legend_handles_labels(),
+        loc="lower center",
+        ncol=3,
+        fontsize=6,
+        edgecolor="white",
+    )
+
+    ax = axes[-1]
+    plot_env(
+        ax, get_env_info(i, large_maze=True)[0], [], [], grayscale=True, alpha=0.15
+    )
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    s = 5
+    ax.scatter(
+        [loc1[0]], [loc1[1]], marker=get_semicircle("left"), color="tab:blue", s=s
+    )
+    ax.scatter(
+        [loc1[0]], [loc1[1]], marker=get_semicircle("right"), color="tab:orange", s=s
+    )
+    ax.scatter(
+        [loc2[0]], [loc2[1]], marker=get_semicircle("left"), color="tab:green", s=s
+    )
+    ax.scatter(
+        [loc2[0]], [loc2[1]], marker=get_semicircle("right"), color="tab:green", s=s
+    )
+
+    plt.subplots_adjust(bottom=0.1, top=0.7, left=0.05, right=0.95, wspace=0.5)
+
+    # plt.show()
+    plt.suptitle(title, fontsize=10, y=0.925)
+
+    plt.subplots_adjust(bottom=0.1, top=0.7, left=0.05, right=0.95)
+    plt.savefig(filename, dpi=300)
+    plt.close()
+
+
+def get_reward_states(filename):
+    d = dict(np.load(filename))
+    glh = d["grounding_prior"]
+    alh = d["schema_A"][0]
+    lh = glh[0].T @ alh[np.arange(alh.shape[0]) % 2 == 1]
+    rows = np.where(lh.sum(1) > 50)[0]
+
+    state = d["low_state"][0, :, 0, 0].argmax(-1)
+    locs = d["location"]
+    return locs, rows, lh, state
+
+
+def create_spatial_firing_plot(sim_path, tag, filename):
+    block = 0
+
+    locs, rows, lh, state = get_reward_states(sim_path / tag / "episode_0.npz")
+    locs2, rows2, lh2, state2 = get_reward_states(sim_path / tag / "episode_1.npz")
+
+    fig, axes = plt.subplots(2, 2, figsize=(4, 1.4), dpi=300)
+    ax = axes.T.flatten()
+
+    lo, rlocs, rlabels = get_env_info(block, large_maze=True)
+    [
+        plot_env(a, lo, [], [], grayscale=True, alpha=0.15)
+        for i, a in enumerate(axes.flatten())
+    ]
+    [a.set_xticks([]) for a in axes.flatten()]
+    [a.set_yticks([]) for a in axes.flatten()]
+
+    ax[0].set_ylabel("Block 1", fontsize=8)
+    ax[1].set_ylabel("Block 2", fontsize=8)
+
+    sequence_order = rows[lh[rows].argmax(0)]
+    sequence_order2 = rows2[lh2[rows2].argmax(0)]
+
+    colors = ["tab:red", "tab:blue", "tab:orange", "tab:green"]
+    for i, a in enumerate(ax.flatten()):
+        if i < 2:
+            anchor_so = (np.arange(len(sequence_order)) + i) % len(sequence_order)
+
+            for j, so in enumerate(sequence_order[anchor_so]):
+                idx = np.where(state == so)[0][0]
+
+                a.scatter(
+                    locs[idx, 0],
+                    locs[idx, 1],
+                    marker="o",
+                    color=colors[i],
+                    alpha=0.15 + 0.85 * ((4 - j) / 4),
+                )
+
+                if j == 0:
+                    a.scatter(
+                        locs[idx, 0],
+                        locs[idx, 1],
+                        marker="x",
+                        color="black",
+                        alpha=0.5,
+                        label="Anchor",
+                    )
+        else:
+            i = i % 2
+            anchor_state = sequence_order[i]
+
+            if anchor_state in sequence_order2:
+                idx = sequence_order2.tolist().index(anchor_state)
+                anchor_so = (np.arange(len(sequence_order2)) + idx) % len(
+                    sequence_order2
+                )
+
+                for j, so in enumerate(sequence_order2[anchor_so]):
+                    idx = np.where(state == so)[0][0]
+
+                    a.scatter(
+                        locs[idx, 0],
+                        locs[idx, 1],
+                        marker="o",
+                        color=colors[i],
+                        alpha=0.15 + 0.85 * ((4 - j) / 4),
+                    )
+
+            idx = np.where(state == sequence_order[i])[0][0]
+            a.scatter(
+                locs[idx, 0],
+                locs[idx, 1],
+                marker="x",
+                color="black",
+                alpha=0.5,
+                label="Anchor Location",
+            )
+
+            a.set_ylim(a.get_ylim())
+            a.set_xlim(a.get_xlim())
+
+            for i in range(4):
+                a.scatter(
+                    [100],
+                    [100],
+                    marker="o",
+                    alpha=0.15 + ((4 - i) / 4) * 0.85,
+                    color="gray",
+                    label=f"Anchor + {i}",
+                )
+
+    ha, la = ax[-1].get_legend_handles_labels()
+
+    plt.suptitle("Simulated spatial firing field", fontsize=10, y=0.925)
+
+    # # Define a consistent margin for the 'empty' space at the very edges
+    margin = 0.30
+    # # Define how much width the legend area should take up
+    legend_width = 0.15
+
+    # 1. Adjust subplots:
+    # The 'right' parameter is pulled in further to make room for the legend
+    plt.subplots_adjust(
+        bottom=0.01, top=0.7, left=margin, right=1 - margin - legend_width
+    )
+
+    # 2. Align the legend:
+    # We anchor it to the space created on the right.
+    # Using loc="center left" makes it easier to tuck it right next to the plots.
+    fig.legend(
+        [(ha[1], ha[0]), *ha[2:]],
+        ["Anchor", "Anchor + 1", "Anchor + 2", "Anchor + 3"],
+        loc="center left",  # Changed to center left for easier anchoring
+        edgecolor="white",
+        fontsize=8,
+        ncol=1,
+        bbox_to_anchor=(
+            1 - margin - legend_width + 0.02,
+            0.35,
+        ),  # Small padding (+0.02)
+    )
+
+    plt.suptitle("Simulated Spatial Firing Field", fontsize=10, y=0.925)
+    plt.savefig(filename, dpi=300)
 
 
 def joint_low_high(low_state, high_state, reward, locations):
@@ -416,7 +684,7 @@ if __name__ == "__main__":
     tag = "mixture:false_randomhigh:false_remap:true_learnschema:false_taskmodel:schema_1_1_clone"
 
     # Load the variables we are interested in for the first 5 envs
-    locations, high_state, low_state, low_H, rewards = [], [], [], [], []
+    maps, locations, high_state, low_state, low_H, rewards = [], [], [], [], [], []
     for i in range(5):
         d = dict(np.load(sim_path / tag / f"episode_{i}.npz"))
         locations.append(d["location"])
@@ -424,6 +692,15 @@ if __name__ == "__main__":
         low_state.append(d["low_state"])
         rewards.append(d["reward"])
         low_H.append(d["state_preference"])
+        low_rew = low_state[-1][0][rewards[-1] > 0].argmax(-1)[:4, 0, 0]
+        maps.append(low_rew)
+
+    if args.large_maze:
+        create_polar_plot(
+            store_path / "polar_activations.pdf", low_H, low_state, locations, maps
+        )
+
+        create_spatial_firing_plot(sim_path, tag, store_path / "spatial_firing.pdf")
 
     create_progress_circle_plots(
         store_path / "progress_circles.pdf",
