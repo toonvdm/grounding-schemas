@@ -495,6 +495,19 @@ def get_progress_values(H_low, low_state, locations, large_maze=False):
         Eqpi_I[i][0, -1000:, 0, 0] / Eqpi_I[i][0, -1000:, 0, 0].max() for i in range(5)
     ]
     locs = [locations[i][-1000:] for i in range(5)]
+
+    # Normalise per subgoal
+    vals_normalised = []
+    for p, v in zip(prefs, [Eqpi_I[i][0, -1000:, 0, 0] for i in range(5)]):
+        max_vals = np.zeros_like(v)
+        min_vals = np.zeros_like(v)
+        for x in np.unique(p):
+            _filter = p == x
+            max_vals[np.arange(len(max_vals))[_filter]] = v[_filter].max()
+            min_vals[np.arange(len(max_vals))[_filter]] = v[_filter].min()
+
+        vals_normalised.append((v - min_vals) / (max_vals - min_vals))
+
     return prefs, vals, locs
 
 
